@@ -408,34 +408,51 @@ func getMockRadixAction(rcv interface{}, cmd string, args ...string) radix.CmdAc
 func TestDumpKeys(t *testing.T) {
 	for i, testCase := range []struct {
 		keys        []string
+		skipFilters []string
 		withTTL     bool
 		expectMatch string
 	}{
 		{
 			[]string{"somestring"},
+			nil,
 			false,
 			"^SET somestring stringvalue\n$",
 		},
 		{
 			[]string{"somestring", "somelist"},
+			nil,
 			false,
 			"^SET somestring stringvalue\nRPUSH somelist listkey1 listval1 listkey2 listval2\n$",
 		},
 		{
 			[]string{"somestring"},
+			nil,
 			true,
 			"^SET somestring stringvalue\nEXPIREAT somestring [0-9]+\n$",
 		},
 		{
 			[]string{"somezset"},
+			nil,
 			false,
 			"^ZADD somezset 1 listkey1 2 listkey2\n$",
+		},
+		{
+			[]string{"somestring", "somelist"},
+			[]string{"some*"},
+			false,
+			"^$",
+		},
+		{
+			[]string{"somestring", "somelist"},
+			[]string{"*list"},
+			false,
+			"^SET somestring stringvalue\n$",
 		},
 	} {
 		var m mockRadixClient
 		var b bytes.Buffer
 		l := log.New(&b, "", 0)
-		err := dumpKeys(&m, getMockRadixAction, testCase.keys, testCase.withTTL, 5, l, RedisCmdSerializer)
+		err := dumpKeys(&m, getMockRadixAction, testCase.keys, testCase.skipFilters, testCase.withTTL, 5, l, RedisCmdSerializer)
 		if err != nil {
 			t.Errorf("received error %+v", err)
 		}
@@ -488,6 +505,71 @@ func TestScanKeysLegacy(t *testing.T) {
 		}
 		if n != testCase.n {
 			t.Errorf("test %d, expected %d keys, got %d", i, testCase.n, n)
+		}
+	}
+}
+
+func TestShouldSkipKey(t *testing.T) {
+	for i, testCase := range []struct {
+		key         string
+		skipFilters []string
+		expected    bool
+	}{
+		{
+			"mykey",
+			nil,
+			false,
+		},
+		{
+			"mykey",
+			[]string{},
+			false,
+		},
+		{
+			"test:config",
+			[]string{"*:config"},
+			true,
+		},
+		{
+			"x:y:data",
+			[]string{"x:*:data"},
+			true,
+		},
+		{
+			"x:y:z:data",
+			[]string{"x:*:data"},
+			true, // * matches any sequence including colons
+		},
+		{
+			"mykey",
+			[]string{"*:config", "x:*:data"},
+			false,
+		},
+		{
+			"test:config",
+			[]string{"*:config", "x:*:data"},
+			true,
+		},
+		{
+			"x:y:data",
+			[]string{"*:config", "x:*:data"},
+			true,
+		},
+		{
+			"prefix:mykey",
+			[]string{"prefix:*"},
+			true,
+		},
+		{
+			"mykey:suffix",
+			[]string{"*:suffix"},
+			true,
+		},
+	} {
+		result := shouldSkipKey(testCase.key, testCase.skipFilters)
+		if result != testCase.expected {
+			t.Errorf("test %d: key=%s, skipFilters=%v, expected %v, got %v",
+				i, testCase.key, testCase.skipFilters, testCase.expected, result)
 		}
 	}
 }

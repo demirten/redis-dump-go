@@ -117,7 +117,7 @@ func realMain() int {
 		TlsHandler: tlshandler,
 	}
 
-	if err = redisdump.DumpServer(s, db, c.Filter, c.NWorkers, c.WithTTL, c.BatchSize, c.Noscan, logger, serializer, progressNotifs); err != nil {
+	if err = redisdump.DumpServer(s, db, c.Filter, c.SkipFilters, c.NWorkers, c.WithTTL, c.BatchSize, c.Noscan, logger, serializer, progressNotifs); err != nil {
 		fmt.Fprintf(os.Stderr, "%s", err)
 		return 1
 	}

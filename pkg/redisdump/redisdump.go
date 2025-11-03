@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +14,17 @@ import (
 )
 
 var AllDBs *uint8 = nil
+
+// shouldSkipKey checks if a key matches any of the skip filter patterns
+func shouldSkipKey(key string, skipFilters []string) bool {
+	for _, pattern := range skipFilters {
+		matched, err := filepath.Match(pattern, key)
+		if err == nil && matched {
+			return true
+		}
+	}
+	return false
+}
 
 func ttlToRedisCmd(k string, val int64) []string {
 	return []string{"EXPIREAT", k, fmt.Sprint(time.Now().Unix() + val)}
@@ -149,11 +161,16 @@ func RESPSerializer(cmd []string) string {
 
 type radixCmder func(rcv interface{}, cmd string, args ...string) radix.CmdAction
 
-func dumpKeys(client radix.Client, cmd radixCmder, keys []string, withTTL bool, batchSize int, logger *log.Logger, serializer Serializer) error {
+func dumpKeys(client radix.Client, cmd radixCmder, keys []string, skipFilters []string, withTTL bool, batchSize int, logger *log.Logger, serializer Serializer) error {
 	var err error
 	var redisCmds [][]string
 
 	for _, key := range keys {
+		// Skip keys that match any skip filter pattern
+		if shouldSkipKey(key, skipFilters) {
+			continue
+		}
+
 		keyType := ""
 
 		err = client.Do(cmd(&keyType, "TYPE", key))
@@ -221,9 +238,9 @@ func dumpKeys(client radix.Client, cmd radixCmder, keys []string, withTTL bool, 
 	return nil
 }
 
-func dumpKeysWorker(client radix.Client, keyBatches <-chan []string, withTTL bool, batchSize int, logger *log.Logger, serializer Serializer, errors chan<- error, done chan<- bool) {
+func dumpKeysWorker(client radix.Client, keyBatches <-chan []string, skipFilters []string, withTTL bool, batchSize int, logger *log.Logger, serializer Serializer, errors chan<- error, done chan<- bool) {
 	for keyBatch := range keyBatches {
-		if err := dumpKeys(client, radix.Cmd, keyBatch, withTTL, batchSize, logger, serializer); err != nil {
+		if err := dumpKeys(client, radix.Cmd, keyBatch, skipFilters, withTTL, batchSize, logger, serializer); err != nil {
 			errors <- err
 		}
 	}
@@ -350,7 +367,7 @@ func redisDialOpts(redisUsername string, redisPassword string, tlsHandler *TlsHa
 	return dialOpts, nil
 }
 
-func dumpDB(client radix.Client, db *uint8, filter string, nWorkers int, withTTL bool, batchSize int, noscan bool, logger *log.Logger, serializer Serializer, progress chan<- ProgressNotification) error {
+func dumpDB(client radix.Client, db *uint8, filter string, skipFilters []string, nWorkers int, withTTL bool, batchSize int, noscan bool, logger *log.Logger, serializer Serializer, progress chan<- ProgressNotification) error {
 	keyGenerator := scanKeys
 	if noscan {
 		keyGenerator = scanKeysLegacy
@@ -370,7 +387,7 @@ func dumpDB(client radix.Client, db *uint8, filter string, nWorkers int, withTTL
 	done := make(chan bool)
 	keyBatches := make(chan []string)
 	for i := 0; i < nWorkers; i++ {
-		go dumpKeysWorker(client, keyBatches, withTTL, batchSize, logger, serializer, errors, done)
+		go dumpKeysWorker(client, keyBatches, skipFilters, withTTL, batchSize, logger, serializer, errors, done)
 	}
 
 	keyGenerator(client, radix.Cmd, *db, 100, filter, keyBatches, progress)
@@ -394,7 +411,7 @@ type Host struct {
 // DumpServer dumps all Keys from the redis server given by redisURL,
 // to the Logger logger. Progress notification informations
 // are regularly sent to the channel progressNotifications
-func DumpServer(s Host, db *uint8, filter string, nWorkers int, withTTL bool, batchSize int, noscan bool, logger *log.Logger, serializer func([]string) string, progress chan<- ProgressNotification) error {
+func DumpServer(s Host, db *uint8, filter string, skipFilters []string, nWorkers int, withTTL bool, batchSize int, noscan bool, logger *log.Logger, serializer func([]string) string, progress chan<- ProgressNotification) error {
 	redisURL := RedisURL(s.Host, fmt.Sprint(s.Port))
 	getConnFunc := func(db *uint8) func(network, addr string) (radix.Conn, error) {
 		return func(network, addr string) (radix.Conn, error) {
@@ -430,7 +447,7 @@ func DumpServer(s Host, db *uint8, filter string, nWorkers int, withTTL bool, ba
 		}
 		defer client.Close()
 
-		if err = dumpDB(client, &db, filter, nWorkers, withTTL, batchSize, noscan, logger, serializer, progress); err != nil {
+		if err = dumpDB(client, &db, filter, skipFilters, nWorkers, withTTL, batchSize, noscan, logger, serializer, progress); err != nil {
 			return err
 		}
 	}
