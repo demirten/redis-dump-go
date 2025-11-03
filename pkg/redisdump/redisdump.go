@@ -15,13 +15,15 @@ import (
 
 var AllDBs *uint8 = nil
 
-// shouldSkipKey checks if a key matches any of the skip filter patterns
+// shouldSkipKey checks if a key matches any of the skip filter patterns.
+// If a pattern is malformed (invalid syntax), it is ignored and won't match any keys.
 func shouldSkipKey(key string, skipFilters []string) bool {
 	for _, pattern := range skipFilters {
 		matched, err := filepath.Match(pattern, key)
 		if err == nil && matched {
 			return true
 		}
+		// Silently ignore malformed patterns - they won't skip any keys
 	}
 	return false
 }

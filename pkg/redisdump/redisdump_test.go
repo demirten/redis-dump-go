@@ -538,7 +538,7 @@ func TestShouldSkipKey(t *testing.T) {
 		{
 			"x:y:z:data",
 			[]string{"x:*:data"},
-			true, // * matches any sequence including colons
+			true, // filepath.Match: * matches any sequence of characters (including colons)
 		},
 		{
 			"mykey",
