@@ -4,26 +4,40 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"strings"
 )
 
+// stringSlice implements flag.Value interface to support multiple flag values
+type stringSlice []string
+
+func (s *stringSlice) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *stringSlice) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
 type Config struct {
-	Host      string
-	Port      int
-	Db        int
-	Username  string
-	Filter    string
-	Noscan    bool
-	BatchSize int
-	NWorkers  int
-	WithTTL   bool
-	Output    string
-	Silent    bool
-	Tls       bool
-	Insecure  bool
-	CaCert    string
-	Cert      string
-	Key       string
-	Help      bool
+	Host        string
+	Port        int
+	Db          int
+	Username    string
+	Filter      string
+	SkipFilters []string
+	Noscan      bool
+	BatchSize   int
+	NWorkers    int
+	WithTTL     bool
+	Output      string
+	Silent      bool
+	Tls         bool
+	Insecure    bool
+	CaCert      string
+	Cert        string
+	Key         string
+	Help        bool
 }
 
 func isFlagPassed(flags *flag.FlagSet, name string) bool {
@@ -38,6 +52,7 @@ func isFlagPassed(flags *flag.FlagSet, name string) bool {
 
 func FromFlags(progName string, args []string) (Config, string, error) {
 	c := Config{}
+	var skipFilters stringSlice
 
 	flags := flag.NewFlagSet(progName, flag.ContinueOnError)
 	var outBuf bytes.Buffer
@@ -48,6 +63,7 @@ func FromFlags(progName string, args []string) (Config, string, error) {
 	flags.IntVar(&c.Db, "db", -1, "only dump this database (default: all databases)")
 	flags.StringVar(&c.Username, "user", "", "Username")
 	flags.StringVar(&c.Filter, "filter", "*", "Key filter to use")
+	flags.Var(&skipFilters, "skip-filter", "Key filter to exclude (can be specified multiple times)")
 	flags.BoolVar(&c.Noscan, "noscan", false, "Use KEYS * instead of SCAN - for Redis <=2.8")
 	flags.IntVar(&c.BatchSize, "batchSize", 1000, "HSET/RPUSH/SADD/ZADD only add 'batchSize' items at a time")
 	flags.IntVar(&c.NWorkers, "n", 10, "Parallel workers")
@@ -70,6 +86,8 @@ func FromFlags(progName string, args []string) (Config, string, error) {
 	if c.Help {
 		flags.Usage()
 	}
+
+	c.SkipFilters = skipFilters
 
 	return c, outBuf.String(), err
 }
