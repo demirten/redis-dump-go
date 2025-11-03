@@ -43,6 +43,8 @@ Usage of ./bin/redis-dump-go:
         only dump this database (default: all databases)
   -filter string
         Key filter to use (default "*")
+  -skip-filter value
+        Key filter to exclude (can be specified multiple times)
   -host string
         Server host (default "127.0.0.1")
   -n int
@@ -61,6 +63,19 @@ $ ./bin/redis-dump-go > dump.resp
 Database 0: 9 element dumped
 Database 1: 1 element dumped
 ```
+
+### Filtering Keys
+
+You can filter which keys to dump using the `-filter` flag. To exclude specific key patterns, use the `-skip-filter` flag (can be specified multiple times):
+
+```bash
+# Dump all keys except those ending with :config
+$ ./bin/redis-dump-go -skip-filter "*:config" > dump.resp
+
+# Exclude multiple patterns
+$ ./bin/redis-dump-go -skip-filter "*:config" -skip-filter "x:*:data" > dump.resp
+```
+
 
 For password-protected Redis servers, set the shell variable REDISDUMPGO\_AUTH:
 
