@@ -463,7 +463,7 @@ func dumpDB(client radix.Client, db *uint8, filter string, skipFilters []string,
 		go dumpKeysWorker(client, keyBatches, skipFilters, withTTL, minRandomTTL, maxRandomTTL, batchSize, logger, serializer, errors, done)
 	}
 
-	keyGenerator(client, radix.Cmd, *db, 10000, filter, keyBatches, progress)
+	keyGenerator(client, radix.Cmd, *db, 100, filter, keyBatches, progress)
 	close(keyBatches)
 
 	for i := 0; i < nWorkers; i++ {
