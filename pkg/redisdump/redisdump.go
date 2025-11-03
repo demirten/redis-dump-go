@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,8 +21,9 @@ func generateRandomTTL(min, max int) int64 {
 	if min <= 0 || max <= 0 || min > max {
 		return 0
 	}
-	// Use current time nanoseconds as seed for randomness
-	return int64(min + (int(time.Now().UnixNano()) % (max - min + 1)))
+	// Use math/rand with time-based seeding for better randomness
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return int64(r.Intn(max-min+1) + min)
 }
 
 // shouldSkipKey checks if a key matches any of the skip filter patterns.
@@ -277,10 +279,11 @@ func dumpKeys(client radix.Client, cmd radixCmder, keys []string, skipFilters []
 			redisCmds = zsetToRedisCmds(ki.key, val, batchSize)
 
 		case "none":
+			// Skip keys that don't exist (deleted between SCAN and TYPE)
 			continue
 
 		default:
-			return fmt.Errorf("Key %s is of unreconized type %s", ki.key, ki.keyType)
+			return fmt.Errorf("Key %s is of unrecognized type %s", ki.key, ki.keyType)
 		}
 
 		for _, redisCmd := range redisCmds {
